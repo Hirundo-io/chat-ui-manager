@@ -3,7 +3,7 @@
 	import { MachineStatus } from '$lib/types';
 	import { PUBLIC_CHAT_UI_URL } from '$env/static/public';
 
-	const chatUIUrl = PUBLIC_CHAT_UI_URL; 
+	const chatUIUrl = PUBLIC_CHAT_UI_URL;
 	let machineStatus: MachineStatus = MachineStatus.UNKNOWN;
 	let chatUIAvailable = false;
 

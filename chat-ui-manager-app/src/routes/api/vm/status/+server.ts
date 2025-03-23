@@ -1,14 +1,13 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
 import { ComputeManagementClient } from '@azure/arm-compute';
-import { DefaultAzureCredential } from '@azure/identity';
+import { AzureCliCredential } from '@azure/identity';
 import { MachineStatus } from '$lib/types';
 
 const subscriptionId = process.env.AZURE_SUBSCRIPTION_ID || '';
 const resourceGroupName = process.env.AZURE_RESOURCE_GROUP || '';
 const vmName = process.env.AZURE_VM_NAME || '';
-
-const credential = new DefaultAzureCredential();
+const credential = new AzureCliCredential();
 const computeClient = new ComputeManagementClient(credential, subscriptionId);
 
 const mapPowerStateToMachineStatus = (powerState?: string): MachineStatus => {
