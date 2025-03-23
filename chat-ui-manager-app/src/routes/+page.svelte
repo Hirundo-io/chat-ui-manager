@@ -8,6 +8,10 @@
 	let chatUIAvailable = false;
 
 	onMount(async () => {
+		await checkMachineStatus();
+	});
+
+	async function checkMachineStatus() {
 		try {
 			const res = await fetch('/api/vm/status');
 			if (!res.ok) throw new Error('Failed to get status');
@@ -17,7 +21,7 @@
 			console.error(err);
 			machineStatus = MachineStatus.UNKNOWN; // revert to 'unknown' if it fails
 		}
-	});
+	}
 
 	async function startMachine() {
 		machineStatus = MachineStatus.STARTING;
@@ -34,6 +38,7 @@
 
 	async function stopMachine() {
 		machineStatus = MachineStatus.STOPPING;
+		chatUIAvailable = false; // Reset availability of the Chat-UI page when stopping the VM
 		try {
 			const res = await fetch('/api/vm/stop', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to stop machine');
@@ -57,10 +62,10 @@
 		}
 	}
 
-	// Set up polling only when the machine is running
+	// Set up polling only when the machine is running and the Chat-UI is not available
 	let availabilityInterval: ReturnType<typeof setInterval> | null = null;
 	$: {
-		if (machineStatus === MachineStatus.RUNNING) {
+		if (machineStatus === MachineStatus.RUNNING && !chatUIAvailable) {
 			checkChatUIAvailability();
 			if (availabilityInterval) clearInterval(availabilityInterval);
 			availabilityInterval = setInterval(checkChatUIAvailability, 5000); // Check every 5 seconds
@@ -68,8 +73,8 @@
 			if (availabilityInterval) {
 				clearInterval(availabilityInterval);
 				availabilityInterval = null;
+				chatUIAvailable = false;
 			}
-			chatUIAvailable = false;
 		}
 	}
 </script>
