@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { MachineStatus } from '$lib/types';
-	import { PUBLIC_CHAT_UI_URL } from '$env/static/public';
+	import { env } from '$env/dynamic/public';
 
-	const chatUIUrl = PUBLIC_CHAT_UI_URL;
+	const chatUIUrl = env.PUBLIC_CHAT_UI_URL;
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
 
