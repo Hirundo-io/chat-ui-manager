@@ -81,10 +81,10 @@ jobs:
         uses: docker/build-push-action@v5
         id: build-chat-ui-manager
         with:
-          context: chat-ui-manager
+          context: chat-ui-manager-app
           cache-from: type=gha
           cache-to: type=gha,mode=min,compression=zstd
-          file: chat-ui-manager/Dockerfile
+          file: chat-ui-manager-app/Dockerfile
           pull: true
           outputs: |
             type=image,compression=zstd,push=${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'push-to-ghcr')}}
