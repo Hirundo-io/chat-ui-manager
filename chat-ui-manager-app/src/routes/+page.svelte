@@ -53,6 +53,11 @@
 	// Check if Chat-UI page is available
 	async function checkChatUIAvailability() {
 		try {
+			if (!chatUIUrl) {
+				chatUIAvailable = false;
+				console.error('Chat-UI URL is not defined');
+				return;
+			}
 			const res = await fetch(chatUIUrl, { method: 'GET', mode: 'no-cors' });
 			// If the response is opaque or has an OK status, assume Chat-UI is available
 			chatUIAvailable = res.type === 'opaque' || res.ok;
