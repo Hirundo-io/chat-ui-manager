@@ -4,8 +4,8 @@
 	import { PUBLIC_CHAT_UI_URL } from '$env/static/public';
 
 	const chatUIUrl = PUBLIC_CHAT_UI_URL;
-	let machineStatus: MachineStatus = MachineStatus.UNKNOWN;
-	let chatUIAvailable = false;
+	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
+	let chatUIAvailable = $state(false);
 
 	onMount(async () => {
 		await checkMachineStatus();
@@ -64,19 +64,34 @@
 
 	// Set up polling only when the machine is running and the Chat-UI is not available
 	let availabilityInterval: ReturnType<typeof setInterval> | null = null;
-	$: {
-		if (machineStatus === MachineStatus.RUNNING && !chatUIAvailable) {
-			checkChatUIAvailability();
-			if (availabilityInterval) clearInterval(availabilityInterval);
-			availabilityInterval = setInterval(checkChatUIAvailability, 5000); // Check every 5 seconds
+
+	const clearPolling = () => {
+		if (availabilityInterval) {
+			clearInterval(availabilityInterval);
+			availabilityInterval = null;
+		}
+	};
+
+	$effect(() => {
+		// When the VM is not running, stop any polling and reset chatUIAvailable
+		if (machineStatus !== MachineStatus.RUNNING) {
+			clearPolling();
+			chatUIAvailable = false;
 		} else {
-			if (availabilityInterval) {
-				clearInterval(availabilityInterval);
-				availabilityInterval = null;
-				chatUIAvailable = false;
+			if (!chatUIAvailable && !availabilityInterval) {
+				// Perform an immediate check before starting the interval
+				checkChatUIAvailability();
+				availabilityInterval = setInterval(checkChatUIAvailability, 5000); // Check every 5 seconds
+			} else if (chatUIAvailable && availabilityInterval) {
+				// If Chat-UI is available, stop polling
+				clearPolling();
 			}
 		}
-	}
+		return () => {
+			// Cleanup function to clear the interval when the component is destroyed
+			clearPolling();
+		};
+	});
 </script>
 
 <div class="flex min-h-screen items-center justify-center">
@@ -92,7 +107,7 @@
 				MachineStatus.RUNNING
 					? 'preset-filled-error-500'
 					: 'preset-filled-success-500'}"
-				on:click={machineStatus === MachineStatus.RUNNING ? stopMachine : startMachine}
+				onclick={machineStatus === MachineStatus.RUNNING ? stopMachine : startMachine}
 				disabled={machineStatus === MachineStatus.UNKNOWN ||
 					machineStatus === MachineStatus.STARTING ||
 					machineStatus === MachineStatus.STOPPING}
@@ -104,8 +119,8 @@
 		<div class="flex justify-center">
 			<button
 				class="btn preset-filled-primary-500 mt-4 px-4 py-2 disabled:cursor-not-allowed"
-				on:click={() => window.open(chatUIUrl, '_blank')}
-				disabled={!chatUIAvailable}
+				onclick={() => window.open(chatUIUrl, '_blank')}
+				disabled={machineStatus !== MachineStatus.RUNNING || !chatUIAvailable}
 			>
 				Open Chat-UI
 			</button>
