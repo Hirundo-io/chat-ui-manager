@@ -23,13 +23,6 @@ RUN bun run build
 
 FROM base AS release
 
-# Start installing the Azure CLI: https://github.com/Azure/azure-cli/issues/19591#issuecomment-2312517131
-RUN apk add py3-pip
-RUN apk add gcc musl-dev python3-dev libffi-dev openssl-dev cargo make
-RUN pip install --break-system-packages --upgrade pip setuptools
-RUN pip install --break-system-packages azure-cli
-# Finish installing the Azure CLI
-
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/build .
 COPY --from=prerelease /usr/src/app/package.json .
