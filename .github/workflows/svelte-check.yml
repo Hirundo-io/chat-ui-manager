@@ -1,0 +1,51 @@
+name: Svelte check (i.e. lint & check typing, CSS & a11y issues) for Chat-UI Manager
+
+on: [pull_request]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORKING_DIRECTORY: chat-ui-manager-app
+
+# Permission can be added at job level or workflow level
+permissions:
+  contents: read # This is required for actions/checkout
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout chat-ui-manager
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          bun install
+
+      - name: Run lint
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          bun run lint
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout chat-ui-manager
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          bun install
+      - name: Run check
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: |
+          bun run check
