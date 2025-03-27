@@ -7,19 +7,30 @@
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
 
-	onMount(async () => {
-		await checkMachineStatus();
+	onMount(() => {
+		const controller = new AbortController();
+		checkMachineStatus(controller.signal);
+
+		// Cleanup function to abort the fetch request when the component is destroyed
+		return () => {
+			controller.abort();
+			console.log('Fetch aborted');
+		};
 	});
 
-	async function checkMachineStatus() {
+	async function checkMachineStatus(signal?: AbortSignal) {
 		try {
-			const res = await fetch('/api/vm/status');
+			const res = await fetch('/api/vm/status', { signal });
 			if (!res.ok) throw new Error('Failed to get status');
 			const data = await res.json();
 			machineStatus = data.status; // e.g. MachineStatus.RUNNING or MachineStatus.STOPPED etc.
 		} catch (err) {
-			console.error(err);
-			machineStatus = MachineStatus.UNKNOWN; // revert to 'unknown' if it fails
+			if (err instanceof Error && err.name === 'AbortError') {
+				console.error('Fetch aborted');
+			} else {
+				console.error(err);
+				machineStatus = MachineStatus.UNKNOWN; // revert to 'unknown' if it fails
+			}
 		}
 	}
 
@@ -50,20 +61,38 @@
 		}
 	}
 
-	// Check if Chat-UI page is available
+	// AbortController instance for Chat-UI availability check
+	let chatUIController: AbortController | null = null;
 	async function checkChatUIAvailability() {
 		try {
+			// If there's an ongoing request, abort it before starting a new one
+			if (chatUIController) {
+				chatUIController.abort();
+			}
+			chatUIController = new AbortController();
+
 			if (!chatUIUrl) {
 				chatUIAvailable = false;
 				console.error('Chat-UI URL is not defined');
 				return;
 			}
-			const res = await fetch(chatUIUrl, { method: 'GET', mode: 'no-cors' });
+
+			const res = await fetch(chatUIUrl, {
+				method: 'GET',
+				mode: 'no-cors',
+				signal: chatUIController.signal
+			});
 			// If the response is opaque or has an OK status, assume Chat-UI is available
 			chatUIAvailable = res.type === 'opaque' || res.ok;
-		} catch (error) {
-			console.error(error);
-			chatUIAvailable = false;
+		} catch (err) {
+			if (err instanceof Error && err.name === 'AbortError') {
+				console.error('Chat-UI availability check was aborted');
+			} else {
+				console.error(err);
+				chatUIAvailable = false;
+			}
+		} finally {
+			chatUIController = null;
 		}
 	}
 
@@ -95,8 +124,18 @@
 		return () => {
 			// Cleanup function to clear the interval when the component is destroyed
 			clearPolling();
+			if (chatUIController) {
+				chatUIController.abort();
+				chatUIController = null;
+			}
 		};
 	});
+
+	let isButtonDisabled = $derived(
+		machineStatus === MachineStatus.UNKNOWN ||
+			machineStatus === MachineStatus.STARTING ||
+			machineStatus === MachineStatus.STOPPING
+	);
 </script>
 
 <div class="flex min-h-screen items-center justify-center">
@@ -107,18 +146,23 @@
 		</p>
 		<!-- Start/Stop button -->
 		<div class="flex justify-center">
-			<button
-				class="btn mt-4 px-4 py-2 disabled:cursor-not-allowed {machineStatus ===
-				MachineStatus.RUNNING
-					? 'preset-filled-error-500'
-					: 'preset-filled-success-500'}"
-				onclick={machineStatus === MachineStatus.RUNNING ? stopMachine : startMachine}
-				disabled={machineStatus === MachineStatus.UNKNOWN ||
-					machineStatus === MachineStatus.STARTING ||
-					machineStatus === MachineStatus.STOPPING}
-			>
-				{machineStatus === MachineStatus.RUNNING ? 'Stop Machine' : 'Start Machine'}
-			</button>
+			{#if machineStatus === MachineStatus.RUNNING}
+				<button
+					class="btn preset-filled-error-500 mt-4 px-4 py-2 disabled:cursor-not-allowed"
+					onclick={stopMachine}
+					disabled={isButtonDisabled}
+				>
+					Stop Machine
+				</button>
+			{:else}
+				<button
+					class="btn preset-filled-success-500 mt-4 px-4 py-2 disabled:cursor-not-allowed"
+					onclick={startMachine}
+					disabled={isButtonDisabled}
+				>
+					Start Machine
+				</button>
+			{/if}
 		</div>
 		<!-- Button to open the Chat UI -->
 		<div class="flex justify-center">
