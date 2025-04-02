@@ -43,7 +43,13 @@ export const GET: RequestHandler = async () => {
 
 		const status = mapPowerStateToMachineStatus(powerState);
 
-		return json({ status });
+		let startedAt: Date | null = null;
+		if (status === MachineStatus.RUNNING) {
+			const runningStatus = instanceView.statuses?.find((status) => status.time !== undefined);
+			startedAt = runningStatus?.time || null;
+		}
+
+		return json({ status, startedAt });
 	} catch (error) {
 		console.error('Error fetching VM status:', error);
 		return json(

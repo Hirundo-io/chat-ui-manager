@@ -4,6 +4,8 @@
 	import { env } from '$env/dynamic/public';
 
 	const chatUIUrl = env.PUBLIC_CHAT_UI_URL;
+	const chatUIDelayMs = Number(env.PUBLIC_CHAT_UI_DELAY_SEC) * 1000;
+
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
 
@@ -22,14 +24,26 @@
 		try {
 			const res = await fetch('/api/vm/status', { signal });
 			if (!res.ok) throw new Error('Failed to get status');
-			const data = await res.json();
-			machineStatus = data.status; // e.g. MachineStatus.RUNNING or MachineStatus.STOPPED etc.
+			const { status, startedAt } = await res.json();
+			machineStatus = status; // E.g. MachineStatus.RUNNING or MachineStatus.STOPPED etc.
+
+			if (startedAt) {
+				const startTime = new Date(startedAt).getTime();
+				const elapsedTime = Date.now() - startTime;
+				// If the machine is running longer than the delay, assume chat UI is available
+				if (elapsedTime >= chatUIDelayMs) {
+					chatUIAvailable = true;
+				} else {
+					const remainingTime = chatUIDelayMs - elapsedTime;
+					setChatUIDelay(remainingTime);
+				}
+			}
 		} catch (err) {
 			if (err instanceof Error && err.name === 'AbortError') {
 				console.error('Fetch aborted');
 			} else {
 				console.error(err);
-				machineStatus = MachineStatus.UNKNOWN; // revert to 'unknown' if it fails
+				machineStatus = MachineStatus.UNKNOWN; // Revert if it fails
 			}
 		}
 	}
@@ -40,10 +54,14 @@
 			const res = await fetch('/api/vm/start', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to start machine');
 			const data = await res.json();
-			machineStatus = data.status; // e.g. MachineStatus.RUNNING
+			machineStatus = data.status; // E.g. MachineStatus.RUNNING
+
+			if (machineStatus === MachineStatus.RUNNING) {
+				setChatUIDelay(chatUIDelayMs); // Once the machine is running, set the delay
+			}
 		} catch (err) {
 			console.error(err);
-			machineStatus = MachineStatus.STOPPED; // revert if it fails
+			machineStatus = MachineStatus.STOPPED; // Revert if it fails
 		}
 	}
 
@@ -54,82 +72,27 @@
 			const res = await fetch('/api/vm/stop', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to stop machine');
 			const data = await res.json();
-			machineStatus = data.status; // e.g. MachineStatus.STOPPED
+			machineStatus = data.status; // E.g. MachineStatus.STOPPED
 		} catch (err) {
 			console.error(err);
-			machineStatus = MachineStatus.RUNNING; // revert if it fails
+			machineStatus = MachineStatus.RUNNING; // Revert if it fails
 		}
 	}
 
-	// AbortController instance for Chat-UI availability check
-	let chatUIController: AbortController | null = null;
-	async function checkChatUIAvailability() {
-		try {
-			// If there's an ongoing request, abort it before starting a new one
-			if (chatUIController) {
-				chatUIController.abort();
-			}
-			chatUIController = new AbortController();
-
-			if (!chatUIUrl) {
-				chatUIAvailable = false;
-				console.error('Chat-UI URL is not defined');
-				return;
-			}
-
-			const res = await fetch(chatUIUrl, {
-				method: 'GET',
-				mode: 'no-cors',
-				signal: chatUIController.signal
-			});
-			// If the response is opaque or has an OK status, assume Chat-UI is available
-			chatUIAvailable = res.type === 'opaque' || res.ok;
-		} catch (err) {
-			if (err instanceof Error && err.name === 'AbortError') {
-				console.error('Chat-UI availability check was aborted');
-			} else {
-				console.error(err);
-				chatUIAvailable = false;
-			}
-		} finally {
-			chatUIController = null;
-		}
-	}
-
-	// Set up polling only when the machine is running and the Chat-UI is not available
-	let availabilityInterval: ReturnType<typeof setInterval> | null = null;
-
-	const clearPolling = () => {
-		if (availabilityInterval) {
-			clearInterval(availabilityInterval);
-			availabilityInterval = null;
-		}
+	const setChatUIDelay = (delay: number) => {
+		chatUIAvailable = false; // Reset availability of the Chat-UI page
+		setTimeout(() => {
+			chatUIAvailable = true;
+		}, delay);
 	};
 
-	$effect(() => {
-		// When the VM is not running, stop any polling and reset chatUIAvailable
-		if (machineStatus !== MachineStatus.RUNNING) {
-			clearPolling();
-			chatUIAvailable = false;
+	const openChatUI = () => {
+		if (chatUIUrl) {
+			window.open(chatUIUrl, '_blank');
 		} else {
-			if (!chatUIAvailable && !availabilityInterval) {
-				// Perform an immediate check before starting the interval
-				checkChatUIAvailability();
-				availabilityInterval = setInterval(checkChatUIAvailability, 5000); // Check every 5 seconds
-			} else if (chatUIAvailable && availabilityInterval) {
-				// If Chat-UI is available, stop polling
-				clearPolling();
-			}
+			console.error('Chat-UI URL is not defined');
 		}
-		return () => {
-			// Cleanup function to clear the interval when the component is destroyed
-			clearPolling();
-			if (chatUIController) {
-				chatUIController.abort();
-				chatUIController = null;
-			}
-		};
-	});
+	};
 
 	let isButtonDisabled = $derived(
 		machineStatus === MachineStatus.UNKNOWN ||
@@ -168,7 +131,7 @@
 		<div class="flex justify-center">
 			<button
 				class="btn preset-filled-primary-500 mt-4 px-4 py-2 disabled:cursor-not-allowed"
-				onclick={() => window.open(chatUIUrl, '_blank')}
+				onclick={openChatUI}
 				disabled={machineStatus !== MachineStatus.RUNNING || !chatUIAvailable}
 			>
 				Open Chat-UI
