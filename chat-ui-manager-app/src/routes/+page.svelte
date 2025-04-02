@@ -4,7 +4,7 @@
 	import { env } from '$env/dynamic/public';
 
 	const chatUIUrl = env.PUBLIC_CHAT_UI_URL;
-	const chatUIDelayMs = Number(env.PUBLIC_CHAT_UI_DELAY_SEC) * 1000;
+	const chatUIDelayMs = Number(env.PUBLIC_CHAT_UI_DELAY_SEC) * 1000 || 30_000; // Default to 30 seconds if not set
 
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
