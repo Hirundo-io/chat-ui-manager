@@ -76,6 +76,7 @@
 		} catch (err) {
 			console.error(err);
 			machineStatus = MachineStatus.RUNNING; // Revert if it fails
+			chatUIAvailable = true; // Reset availability of the Chat-UI page
 		}
 	}
 
