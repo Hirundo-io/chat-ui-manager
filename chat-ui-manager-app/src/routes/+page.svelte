@@ -5,6 +5,7 @@
 
 	const chatUIUrl = env.PUBLIC_CHAT_UI_URL;
 	const chatUIDelayMs = Number(env.PUBLIC_CHAT_UI_DELAY_SEC) * 1000 || 30_000; // Default to 30 seconds if not set
+	const pollStatusIntervalMs = 5000; // 5 seconds
 
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
@@ -19,6 +20,27 @@
 			console.log('Fetch aborted');
 		};
 	});
+
+	// Poll /api/vm/status until status is RUNNING or STOPPED.
+	async function pollStatusUntilFinal(interval: number): Promise<MachineStatus> {
+		return new Promise((resolve, reject) => {
+			const timer = setInterval(async () => {
+				try {
+					const res = await fetch('/api/vm/status');
+					if (!res.ok) throw new Error('Failed to fetch status');
+					const { status } = await res.json();
+					machineStatus = status;
+					if (status === MachineStatus.RUNNING || status === MachineStatus.STOPPED) {
+						clearInterval(timer);
+						resolve(status);
+					}
+				} catch (err) {
+					clearInterval(timer);
+					reject(err);
+				}
+			}, interval);
+		});
+	}
 
 	async function checkMachineStatus(signal?: AbortSignal) {
 		try {
@@ -53,10 +75,11 @@
 		try {
 			const res = await fetch('/api/vm/start', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to start machine');
-			const data = await res.json();
-			machineStatus = data.status; // E.g. MachineStatus.RUNNING
+			const { status } = await res.json();
+			machineStatus = status; // E.g. MachineStatus.STARTING
 
-			if (machineStatus === MachineStatus.RUNNING) {
+			const final = await pollStatusUntilFinal(pollStatusIntervalMs);
+			if (final === MachineStatus.RUNNING) {
 				setChatUIDelay(chatUIDelayMs); // Once the machine is running, set the delay
 			}
 		} catch (err) {
@@ -71,8 +94,9 @@
 		try {
 			const res = await fetch('/api/vm/stop', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to stop machine');
-			const data = await res.json();
-			machineStatus = data.status; // E.g. MachineStatus.STOPPED
+			const { status } = await res.json();
+			machineStatus = status; // E.g. MachineStatus.STOPPING
+			await pollStatusUntilFinal(pollStatusIntervalMs); // Wait for the machine to stop
 		} catch (err) {
 			console.error(err);
 			machineStatus = MachineStatus.RUNNING; // Revert if it fails

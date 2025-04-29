@@ -7,7 +7,7 @@ on:
       - ".github/workflows/build_chat_ui_manager.yml"
     branches:
       - "main"
-      - "chm-1-create-chat-ui-manager-app"
+      - "chm-2-fix-machine-status-not-updated-correctly"
     tags:
       - "v*"
   pull_request:

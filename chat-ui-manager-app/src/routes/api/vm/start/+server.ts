@@ -16,8 +16,8 @@ const computeClient = new ComputeManagementClient(credential, subscriptionId);
 
 export const POST: RequestHandler = async () => {
 	try {
-		await computeClient.virtualMachines.beginStartAndWait(resourceGroupName, vmName);
-		return json({ status: MachineStatus.RUNNING });
+		await computeClient.virtualMachines.beginStart(resourceGroupName, vmName);
+		return json({ status: MachineStatus.STARTING });
 	} catch (error) {
 		console.error('Error starting VM:', error);
 		return json({ status: MachineStatus.STOPPED, error: 'Could not start VM' }, { status: 500 });
