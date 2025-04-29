@@ -5,9 +5,14 @@
 
 	const chatUIUrl = env.PUBLIC_CHAT_UI_URL;
 	const chatUIDelayMs = Number(env.PUBLIC_CHAT_UI_DELAY_SEC) * 1000 || 30_000; // Default to 30 seconds if not set
+	const pollStatusIntervalMs = 5000; // 5 seconds
+	const maxPollAttempts = 36; // 5 * 36 = 3 minutes
 
 	let machineStatus: MachineStatus = $state(MachineStatus.UNKNOWN);
 	let chatUIAvailable = $state(false);
+
+	// Controller to cancel polling if needed
+	let pollController: AbortController;
 
 	onMount(() => {
 		const controller = new AbortController();
@@ -16,9 +21,41 @@
 		// Cleanup function to abort the fetch request when the component is destroyed
 		return () => {
 			controller.abort();
-			console.log('Fetch aborted');
 		};
 	});
+
+	// Poll for the VM's status until it is RUNNING/STOPPED, reached max attempts, or if aborted via signal.
+	async function pollStatusUntilFinal(signal?: AbortSignal): Promise<MachineStatus> {
+		return new Promise((resolve, reject) => {
+			let attempts = 0;
+			const timer = setInterval(async () => {
+				// Abort if signaled
+				if (signal?.aborted) {
+					clearInterval(timer);
+					return reject(new Error('Polling aborted'));
+				}
+				attempts++;
+				try {
+					await checkMachineStatus(signal);
+					if (machineStatus === MachineStatus.RUNNING || machineStatus === MachineStatus.STOPPED) {
+						clearInterval(timer);
+						return resolve(machineStatus); // Resolve with the current machineStatus
+					}
+					if (attempts >= maxPollAttempts) {
+						clearInterval(timer);
+						return reject(new Error('Polling timed out'));
+					}
+				} catch (err) {
+					clearInterval(timer);
+					return reject(err);
+				}
+			}, pollStatusIntervalMs);
+			signal?.addEventListener('abort', () => {
+				clearInterval(timer);
+				reject(new Error('Polling aborted'));
+			});
+		});
+	}
 
 	async function checkMachineStatus(signal?: AbortSignal) {
 		try {
@@ -51,17 +88,20 @@
 	async function startMachine() {
 		machineStatus = MachineStatus.STARTING;
 		try {
+			pollController = new AbortController();
 			const res = await fetch('/api/vm/start', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to start machine');
-			const data = await res.json();
-			machineStatus = data.status; // E.g. MachineStatus.RUNNING
+			const { status } = await res.json();
+			machineStatus = status; // E.g. MachineStatus.STARTING
 
-			if (machineStatus === MachineStatus.RUNNING) {
+			const final = await pollStatusUntilFinal(pollController.signal);
+			if (final === MachineStatus.RUNNING) {
 				setChatUIDelay(chatUIDelayMs); // Once the machine is running, set the delay
 			}
 		} catch (err) {
 			console.error(err);
-			machineStatus = MachineStatus.STOPPED; // Revert if it fails
+			pollController?.abort();
+			machineStatus = MachineStatus.STOPPED;
 		}
 	}
 
@@ -69,13 +109,16 @@
 		machineStatus = MachineStatus.STOPPING;
 		chatUIAvailable = false; // Reset availability of the Chat-UI page when stopping the VM
 		try {
+			pollController = new AbortController();
 			const res = await fetch('/api/vm/stop', { method: 'POST' });
 			if (!res.ok) throw new Error('Failed to stop machine');
-			const data = await res.json();
-			machineStatus = data.status; // E.g. MachineStatus.STOPPED
+			const { status } = await res.json();
+			machineStatus = status; // E.g. MachineStatus.STOPPING
+			await pollStatusUntilFinal(pollController.signal); // Wait for the machine to stop
 		} catch (err) {
 			console.error(err);
-			machineStatus = MachineStatus.RUNNING; // Revert if it fails
+			pollController?.abort();
+			machineStatus = MachineStatus.RUNNING;
 			chatUIAvailable = true; // Reset availability of the Chat-UI page
 		}
 	}

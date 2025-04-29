@@ -16,8 +16,8 @@ const computeClient = new ComputeManagementClient(credential, subscriptionId);
 
 export const POST: RequestHandler = async () => {
 	try {
-		await computeClient.virtualMachines.beginDeallocateAndWait(resourceGroupName, vmName);
-		return json({ status: MachineStatus.STOPPED });
+		await computeClient.virtualMachines.beginDeallocate(resourceGroupName, vmName);
+		return json({ status: MachineStatus.STOPPING });
 	} catch (error) {
 		console.error('Error stopping VM:', error);
 		return json({ status: MachineStatus.RUNNING, error: 'Could not stop VM' }, { status: 500 });
